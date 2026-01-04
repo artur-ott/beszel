@@ -140,14 +140,29 @@ func (dm *dockerManager) getDockerStats(cacheTimeMs uint16) ([]*container.Stats,
 
 	var failedContainers []*container.ApiInfo
 
+	// Skip this container if it matches the exclusion pattern
+	apiContainerList := make([]*container.ApiInfo, 0, len(dm.apiContainerList))
 	for _, ctr := range dm.apiContainerList {
-		ctr.IdShort = ctr.Id[:12]
-
 		// Skip this container if it matches the exclusion pattern
 		if dm.shouldExcludeContainer(ctr.Names[0][1:]) {
 			slog.Debug("Excluding container", "name", ctr.Names[0][1:])
 			continue
 		}
+		apiContainerList = append(apiContainerList, ctr)
+	}
+	dm.apiContainerList = apiContainerList
+
+	for _, ctr := range dm.apiContainerList {
+		ctr.IdShort = ctr.Id[:12]
+
+		// Bug: Skips only the update
+		// Skip this container if it matches the exclusion pattern
+		/*
+		if dm.shouldExcludeContainer(ctr.Names[0][1:]) {
+			slog.Debug("Excluding container", "name", ctr.Names[0][1:])
+			continue
+		}
+		*/
 
 		dm.validIds[ctr.IdShort] = struct{}{}
 		// check if container is less than 1 minute old (possible restart)
@@ -410,6 +425,23 @@ func (dm *dockerManager) updateContainerStats(ctr *container.ApiInfo, cacheTimeM
 	res.Networks = nil
 	if err := dm.decode(resp, res); err != nil {
 		return err
+	}
+
+	// Add health status for podman
+	if dm.usingPodman {
+		resp, err := dm.client.Get(fmt.Sprintf("http://d/v1.0.0/libpod/containers/%s/json", ctr.IdShort))
+		if err != nil {
+			return err
+		}
+		var podmanStatus container.PodmanApiInfo
+		if err := dm.decode(resp, &podmanStatus); err != nil {
+			return err
+		}
+		if health, ok := container.DockerHealthStrings[podmanStatus.Status]; ok {
+			stats.Health = health
+		} else {
+			stats.Health = container.DockerHealthNone
+		}
 	}
 
 	// Initialize CPU tracking for this cache time interval

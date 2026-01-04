@@ -1,6 +1,9 @@
 package container
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Docker container info from /containers/json
 type ApiInfo struct {
@@ -23,6 +26,42 @@ type ApiInfo struct {
 	// }
 	// NetworkSettings *SummaryNetworkSettings
 	// Mounts          []MountPoint
+}
+
+// Podman container info from /containers/json
+type PodmanApiInfo struct {
+	// Id      string
+	// IdShort string
+	Status  string
+	// State   string
+	// Image   string
+	// ImageID string
+	// Command string
+	// Created int64
+	// Ports      []Port
+	// SizeRw     int64 `json:",omitempty"`
+	// SizeRootFs int64 `json:",omitempty"`
+	// Labels     map[string]string
+	// HostConfig struct {
+	// 	NetworkMode string            `json:",omitempty"`
+	// 	Annotations map[string]string `json:",omitempty"`
+	// }
+	// NetworkSettings *SummaryNetworkSettings
+	// Mounts          []MountPoint
+}
+func (p *PodmanApiInfo) UnmarshalJSON(b []byte) error {
+	var tmp struct {
+		State struct {
+			Health struct {
+				Status string `json:"Status"`
+			} `json:"Health"`
+		} `json:"State"`
+	}
+	if err := json.Unmarshal(b, &tmp); err != nil {
+		return err
+	}
+	p.Status = tmp.State.Health.Status
+	return nil
 }
 
 // Docker container resources from /containers/{id}/stats
